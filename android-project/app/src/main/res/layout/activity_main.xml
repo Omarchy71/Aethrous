@@ -22,7 +22,6 @@
             android:layout_marginTop="40dp"
             android:layout_marginBottom="32dp">
 
-            <!-- App Icon -->
             <ImageView
                 android:layout_width="80dp"
                 android:layout_height="80dp"
@@ -58,7 +57,6 @@
             android:padding="24dp"
             android:layout_marginBottom="16dp">
 
-            <!-- Status Indicator -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -84,7 +82,6 @@
 
             </LinearLayout>
 
-            <!-- Connect Button -->
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -98,7 +95,6 @@
 
             </FrameLayout>
 
-            <!-- Connection Info -->
             <LinearLayout
                 android:id="@+id/connectionInfo"
                 android:layout_width="match_parent"
@@ -211,25 +207,29 @@
                 <TextView
                     android:id="@+id/chipGool"
                     style="@style/ProtocolChip"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:background="@drawable/chip_gool_background"
                     android:text="Gool"
-                    android:layout_marginEnd="8dp"/>
+                    android:textColor="@android:color/white"
+                    android:layout_marginEnd="4dp"/>
 
                 <TextView
                     android:id="@+id/chipMasque"
                     style="@style/ProtocolChip"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:background="@drawable/chip_background"
                     android:text="MASQUE"
-                    android:layout_marginEnd="8dp"/>
+                    android:layout_marginEnd="4dp"/>
 
                 <TextView
                     android:id="@+id/chipWireguard"
                     style="@style/ProtocolChip"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:background="@drawable/chip_background"
                     android:text="WireGuard"/>
@@ -264,19 +264,51 @@
                 <TextView
                     android:id="@+id/chipBalanced"
                     style="@style/ProtocolChip"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:background="@drawable/chip_gool_background"
                     android:text="Balanced"
-                    android:layout_marginEnd="8dp"/>
+                    android:textColor="@android:color/white"
+                    android:layout_marginEnd="4dp"/>
 
                 <TextView
                     android:id="@+id/chipAggressive"
                     style="@style/ProtocolChip"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:background="@drawable/chip_background"
-                    android:text="Aggressive"/>
+                    android:text="Aggressive"
+                    android:layout_marginEnd="4dp"/>
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/chipLight"
+                    style="@style/ProtocolChip"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/chip_background"
+                    android:text="Light"
+                    android:layout_marginEnd="4dp"/>
+
+                <TextView
+                    android:id="@+id/chipOff"
+                    style="@style/ProtocolChip"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/chip_background"
+                    android:text="Off"/>
 
             </LinearLayout>
 
