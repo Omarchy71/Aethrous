@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # =============================================================================
 # Aethrous - Censorship circumvention with system-wide routing
@@ -31,18 +30,9 @@ TUNNEL_PID=""
 PROTOCOL="gool"
 
 # Scan mode: turbo | balanced | thorough | stealth | ironclad
-# - ironclad: End-to-end data validation (best for strict DPI)
-# - thorough: Deep scan for best ping
-# - balanced: Good balance (default)
-# - stealth: Slow scan to avoid detection
-# - turbo: Fast, first match
 SCAN_MODE="balanced"
 
 # Noize profile for WireGuard/gool: balanced | aggressive | light | off
-# - balanced: Default, good for most restricted networks
-# - aggressive: Maximum obfuscation for strict DPI
-# - light: Minimal obfuscation
-# - off: No obfuscation
 NOIZE_PROFILE="balanced"
 
 # SOCKS5 proxy port
@@ -256,8 +246,8 @@ stop_services() {
         wait "$AETHER_PID" 2>/dev/null || true
     fi
     
+    # Kill only hev-socks5-tunnel, not aether (to avoid killing ourselves)
     pkill -f "hev-socks5-tunnel" 2>/dev/null || true
-    pkill -f "aether" 2>/dev/null || true
     
     cleanup_routing
     
@@ -299,6 +289,7 @@ load_user_config() {
     if [ -f "$USER_CONF" ]; then
         log_debug "Loading config from $USER_CONF"
         set -a
+        # shellcheck disable=SC1090
         source "$USER_CONF"
         set +a
         
@@ -431,11 +422,9 @@ start_aether() {
 start_tunnel() {
     log_info "Starting hev-socks5-tunnel..."
     
-    local cmd="$TUNNEL_BIN $TUNNEL_CONF"
+    log_debug "Running: $TUNNEL_BIN $TUNNEL_CONF"
     
-    log_debug "Running: $cmd"
-    
-    $cmd &
+    "$TUNNEL_BIN" "$TUNNEL_CONF" &
     TUNNEL_PID=$!
     
     sleep 2
@@ -493,6 +482,7 @@ monitor_services() {
     local reconnect_count=0
     
     while true; do
+        # Check if Aether is still running
         if ! kill -0 "$AETHER_PID" 2>/dev/null; then
             log_warn "Aether process died"
             
@@ -505,7 +495,13 @@ monitor_services() {
                 fi
                 
                 log_info "Auto-reconnect attempt $reconnect_count (delay: ${RECONNECT_DELAY}s)..."
-                stop_services
+                
+                # Stop tunnel first, then wait
+                if [ -n "$TUNNEL_PID" ] && kill -0 "$TUNNEL_PID" 2>/dev/null; then
+                    kill "$TUNNEL_PID" 2>/dev/null || true
+                    wait "$TUNNEL_PID" 2>/dev/null || true
+                fi
+                
                 sleep "$RECONNECT_DELAY"
                 
                 log_info "Reconnecting..."
@@ -525,6 +521,7 @@ monitor_services() {
             fi
         fi
         
+        # Check if tunnel is still running
         if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
             log_warn "hev-socks5-tunnel process died"
             
@@ -543,7 +540,13 @@ monitor_services() {
                     reconnect_count=0
                 else
                     log_error "Failed to restart tunnel, full reconnect..."
-                    stop_services
+                    
+                    # Kill Aether
+                    if [ -n "$AETHER_PID" ] && kill -0 "$AETHER_PID" 2>/dev/null; then
+                        kill "$AETHER_PID" 2>/dev/null || true
+                        wait "$AETHER_PID" 2>/dev/null || true
+                    fi
+                    
                     sleep "$RECONNECT_DELAY"
                     
                     generate_tunnel_config
@@ -747,8 +750,9 @@ load_user_config
 case "$COMMAND" in
     start)
         if [ "$DAEMON_MODE" = "true" ]; then
+            mkdir -p "$LOG_DIR"
             nohup "$0" start > "$LOG_DIR/aethrous.log" 2>&1 &
-            log_info "Started in daemon mode (PID: $!)"
+            echo "Started in daemon mode (PID: $!)"
             exit 0
         fi
         
@@ -762,7 +766,10 @@ case "$COMMAND" in
             rm -f "$PID_FILE"
             log_info "Stop signal sent"
         else
-            stop_services
+            # Try to kill any running processes
+            pkill -f "hev-socks5-tunnel" 2>/dev/null || true
+            # Don't kill aether with pkill as it might match our script
+            log_info "Services stopped"
         fi
         ;;
     status)
@@ -774,13 +781,14 @@ case "$COMMAND" in
             rm -f "$PID_FILE"
             sleep 2
         else
-            stop_services
+            pkill -f "hev-socks5-tunnel" 2>/dev/null || true
             sleep 1
         fi
         
         if [ "$DAEMON_MODE" = "true" ]; then
+            mkdir -p "$LOG_DIR"
             nohup "$0" start > "$LOG_DIR/aethrous.log" 2>&1 &
-            log_info "Restarted in daemon mode (PID: $!)"
+            echo "Restarted in daemon mode (PID: $!)"
             exit 0
         fi
         
@@ -800,7 +808,7 @@ case "$COMMAND" in
         export AETHER_SCAN="$SCAN_MODE"
         export AETHER_NOIZE="$NOIZE_PROFILE"
         log_info "Running Aether scan..."
-        $AETHER_BIN
+        "$AETHER_BIN"
         ;;
     config)
         mkdir -p "$CONF_DIR"
@@ -817,19 +825,10 @@ case "$COMMAND" in
 
 # Scan mode: turbo | balanced | thorough | stealth | ironclad
 # Default: balanced
-# - turbo:      Fast, first working endpoint
-# - balanced:   Good balance [default]
-# - thorough:   Deep scan for best ping
-# - stealth:    Slow scan to avoid detection
-# - ironclad:   End-to-end data validation [most reliable]
 # AETHER_SCAN=balanced
 
 # Noize profile (obfuscation): balanced | aggressive | light | off
 # Default: balanced
-# - balanced:    Good for most restricted networks
-# - aggressive:  Maximum obfuscation for strict DPI
-# - light:       Minimal obfuscation
-# - off:         No obfuscation
 # AETHER_NOIZE=balanced
 
 # SOCKS5 proxy port

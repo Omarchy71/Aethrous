@@ -1,4 +1,4 @@
-package com.aethertunnel;
+package com.aethrous;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -35,6 +35,12 @@ public class MainActivity extends AppCompatActivity {
         updateUI();
     }
     
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateUI();
+    }
+    
     private void startVpn() {
         // Check VPN permission
         Intent vpnIntent = VpnService.prepare(this);
@@ -46,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void stopVpn() {
-        Intent stopIntent = new Intent(this, AetherTunnelVpnService.class);
+        Intent stopIntent = new Intent(this, AethrousVpnService.class);
         stopIntent.setAction("STOP");
         startService(stopIntent);
         isConnected = false;
@@ -54,22 +60,24 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void onVpnPermissionGranted() {
-        Intent startIntent = new Intent(this, AetherTunnelVpnService.class);
+        Intent startIntent = new Intent(this, AethrousVpnService.class);
         startService(startIntent);
         isConnected = true;
         updateUI();
     }
     
     private void updateUI() {
-        if (isConnected) {
-            btnConnect.setText("Disconnect");
-            txtStatus.setText("Status: Connected");
-            txtStatus.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
-        } else {
-            btnConnect.setText("Connect");
-            txtStatus.setText("Status: Disconnected");
-            txtStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
-        }
+        runOnUiThread(() -> {
+            if (isConnected) {
+                btnConnect.setText("Disconnect");
+                txtStatus.setText("Status: Connected");
+                txtStatus.setTextColor(getResources().getColor(android.R.color.holo_green_dark, getTheme()));
+            } else {
+                btnConnect.setText("Connect");
+                txtStatus.setText("Status: Disconnected");
+                txtStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark, getTheme()));
+            }
+        });
     }
     
     @Override

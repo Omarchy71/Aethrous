@@ -1,4 +1,4 @@
-package com.aethertunnel;
+package com.aethrous;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -23,9 +23,9 @@ import java.io.IOException;
  * 2. Creates VPN TUN interface
  * 3. Routes traffic through TUN -> hev-socks5-tunnel -> SOCKS5 -> Aether -> Internet
  */
-public class AetherTunnelVpnService extends VpnService {
-    private static final String TAG = "AetherTunnelVpn";
-    private static final String CHANNEL_ID = "aether_tunnel_channel";
+public class AethrousVpnService extends VpnService {
+    private static final String TAG = "AethrousVpn";
+    private static final String CHANNEL_ID = "aethrous_channel";
     private static final int NOTIFICATION_ID = 1;
     
     private static final String SOCKS5_ADDRESS = "127.0.0.1";
@@ -35,6 +35,7 @@ public class AetherTunnelVpnService extends VpnService {
     
     private ParcelFileDescriptor vpnInterface;
     private boolean isRunning = false;
+    private Process aetherProcess;
     
     // Native JNI methods for hev-socks5-tunnel
     private static native boolean TProxyStartService(String configPath, int fd);
@@ -94,6 +95,9 @@ public class AetherTunnelVpnService extends VpnService {
                 // Step 4: Start hev-socks5-tunnel
                 updateNotification("Starting tunnel...");
                 String configPath = createTunnelConfig();
+                if (configPath == null) {
+                    throw new Exception("Failed to create tunnel config");
+                }
                 if (!TProxyStartService(configPath, vpnInterface.getFd())) {
                     throw new Exception("Failed to start tunnel");
                 }
@@ -119,15 +123,15 @@ public class AetherTunnelVpnService extends VpnService {
                 return false;
             }
             
-            // Start Aether process
+            // Start Aether process with gool protocol (default)
             ProcessBuilder pb = new ProcessBuilder(
                 aetherPath,
-                "--masque",
+                "--gool",
                 "--scan", "balanced",
-                "--port", String.valueOf(SOCKS5_PORT)
+                "--noize", "balanced"
             );
             pb.redirectErrorStream(true);
-            pb.start();
+            aetherProcess = pb.start();
             
             return true;
         } catch (Exception e) {
@@ -147,6 +151,7 @@ public class AetherTunnelVpnService extends VpnService {
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
                     return false;
                 }
             }
@@ -156,7 +161,7 @@ public class AetherTunnelVpnService extends VpnService {
     
     private ParcelFileDescriptor createVpnInterface() {
         Builder builder = new Builder();
-        builder.setSession("Aether Tunnel");
+        builder.setSession("Aethrous");
         builder.addAddress(TUN_ADDRESS, 32);
         builder.addAddress(TUN_IPV6, 128);
         builder.addRoute("0.0.0.0", 0);
@@ -191,7 +196,10 @@ public class AetherTunnelVpnService extends VpnService {
             "  address: " + SOCKS5_ADDRESS + "\n" +
             "  port: " + SOCKS5_PORT + "\n" +
             "  udp: 'udp'\n" +
-            "  mark: 438\n";
+            "  mark: 438\n" +
+            "\n" +
+            "misc:\n" +
+            "  log-level: warn\n";
         
         try {
             File configFile = new File(getFilesDir(), "tunnel.yml");
@@ -209,10 +217,17 @@ public class AetherTunnelVpnService extends VpnService {
         isRunning = false;
         
         // Stop tunnel
-        TProxyStopService();
+        try {
+            TProxyStopService();
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping tunnel", e);
+        }
         
-        // Stop Aether
-        // Aether is stopped when its process is killed
+        // Stop Aether process
+        if (aetherProcess != null) {
+            aetherProcess.destroy();
+            aetherProcess = null;
+        }
         
         // Close VPN interface
         if (vpnInterface != null) {
@@ -245,13 +260,15 @@ public class AetherTunnelVpnService extends VpnService {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
-                "Aether Tunnel",
+                "Aethrous",
                 NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("Aether Tunnel VPN Service");
+            channel.setDescription("Aethrous VPN Service");
             
             NotificationManager manager = getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(channel);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
         }
     }
     
@@ -262,7 +279,7 @@ public class AetherTunnelVpnService extends VpnService {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
         
-        Intent stopIntent = new Intent(this, AetherTunnelVpnService.class);
+        Intent stopIntent = new Intent(this, AethrousVpnService.class);
         stopIntent.setAction("STOP");
         PendingIntent stopPendingIntent = PendingIntent.getService(
             this, 1, stopIntent,
@@ -270,17 +287,19 @@ public class AetherTunnelVpnService extends VpnService {
         );
         
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Aether Tunnel")
+            .setContentTitle("Aethrous")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_vpn_key)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(pendingIntent)
-            .addAction(R.drawable.ic_stop, "Disconnect", stopPendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Disconnect", stopPendingIntent)
             .setOngoing(true)
             .build();
     }
     
     private void updateNotification(String text) {
         NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.notify(NOTIFICATION_ID, buildNotification(text));
+        if (manager != null) {
+            manager.notify(NOTIFICATION_ID, buildNotification(text));
+        }
     }
 }
