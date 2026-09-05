@@ -114,16 +114,32 @@ public class AethrousVpnService extends VpnService {
 
     private boolean extractBinaries() {
         try {
-            String nativeDir = getApplicationInfo().nativeLibraryDir;
             File filesDir = getFilesDir();
+            String arch = System.getProperty("os.arch", "");
+            String archSuffix;
 
-            String[] binaries = {"aether", "hev-socks5-tunnel"};
-            for (String bin : binaries) {
-                File srcFile = new File(nativeDir, bin);
-                File dstFile = new File(filesDir, bin);
+            if (arch.contains("aarch64") || arch.contains("arm64")) {
+                archSuffix = "arm64";
+            } else if (arch.contains("arm")) {
+                archSuffix = "armv7";
+            } else if (arch.contains("x86_64") || arch.contains("amd64")) {
+                archSuffix = "x86_64";
+            } else {
+                archSuffix = "arm64";
+            }
 
-                if (!dstFile.exists() || srcFile.lastModified() > dstFile.lastModified()) {
-                    java.io.InputStream in = new java.io.FileInputStream(srcFile);
+            String[][] binaries = {
+                {"aether-" + archSuffix, "aether"},
+                {"hev-socks5-tunnel-" + archSuffix, "hev-socks5-tunnel"}
+            };
+
+            for (String[] pair : binaries) {
+                String assetName = pair[0];
+                String execName = pair[1];
+                File dstFile = new File(filesDir, execName);
+
+                if (!dstFile.exists()) {
+                    java.io.InputStream in = getAssets().open(assetName);
                     java.io.FileOutputStream out = new java.io.FileOutputStream(dstFile);
                     byte[] buf = new byte[8192];
                     int len;
@@ -134,6 +150,7 @@ public class AethrousVpnService extends VpnService {
                     in.close();
                 }
                 dstFile.setExecutable(true);
+                Log.i(TAG, "Extracted: " + execName + " for " + archSuffix);
             }
             return true;
         } catch (Exception e) {
