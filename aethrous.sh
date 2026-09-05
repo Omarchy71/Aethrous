@@ -2,7 +2,7 @@
 set -e
 
 # =============================================================================
-# Aether Tunnel - Censorship circumvention with system-wide routing
+# Aethrous - Censorship circumvention with system-wide routing
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -15,23 +15,35 @@ AETHER_BIN="$BIN_DIR/aether"
 TUNNEL_BIN="$BIN_DIR/hev-socks5-tunnel"
 USER_CONF="$CONF_DIR/user.conf"
 TUNNEL_CONF="$CONF_DIR/tunnel.yml"
-PID_FILE="$DATA_DIR/aether-tunnel.pid"
+PID_FILE="$DATA_DIR/aethrous.pid"
 STATE_FILE="$DATA_DIR/state"
 RECONNECT_DELAY=5
-MAX_RECONNECT_ATTEMPTS=0  # 0 = unlimited
+MAX_RECONNECT_ATTEMPTS=0
 
 AETHER_PID=""
 TUNNEL_PID=""
 
 # =============================================================================
-# Default Configuration
+# Default Configuration - Optimized for gool anti-DPI
 # =============================================================================
 
 # Protocol: gool | masque | wireguard
 PROTOCOL="gool"
 
-# Scan mode: quick | balanced | turbo
+# Scan mode: turbo | balanced | thorough | stealth | ironclad
+# - ironclad: End-to-end data validation (best for strict DPI)
+# - thorough: Deep scan for best ping
+# - balanced: Good balance (default)
+# - stealth: Slow scan to avoid detection
+# - turbo: Fast, first match
 SCAN_MODE="balanced"
+
+# Noize profile for WireGuard/gool: balanced | aggressive | light | off
+# - balanced: Default, good for most restricted networks
+# - aggressive: Maximum obfuscation for strict DPI
+# - light: Minimal obfuscation
+# - off: No obfuscation
+NOIZE_PROFILE="balanced"
 
 # SOCKS5 proxy port
 SOCKS_PORT=1819
@@ -44,9 +56,17 @@ TUN_IPV6="fc00::1"
 # Routing
 SOCKS_MARK=438
 
+# WireGuard/gool keepalive (seconds)
+WG_KEEPALIVE=25
+
+# Quick reconnect to last known-good gateway
+QUICK_RECONNECT=true
+
+# IP version: 4 | 6 | dual
+IP_VERSION="4"
+
 # Behavior
 AUTO_RECONNECT=true
-AUTO_CONNECT=false
 VERBOSE=false
 LOG_LEVEL="info"
 DAEMON_MODE=false
@@ -57,7 +77,7 @@ DAEMON_MODE=false
 
 usage() {
     cat <<EOF
-Aether Tunnel - Censorship circumvention with system-wide routing
+Aethrous - Censorship circumvention with system-wide routing
 
 Usage: $(basename "$0") [command] [options]
 
@@ -71,37 +91,84 @@ Commands:
     scan                Run Aether endpoint scan only
     config              Edit user configuration
     logs                View recent logs
+    profiles            Show available anti-DPI profiles
 
 Options:
     -g, --gool          Use nested WireGuard (gool) [DEFAULT]
     -m, --masque        Use MASQUE protocol
     -w, --wireguard     Use WireGuard protocol
-    -s, --scan MODE     Scan mode: quick|balanced|turbo (default: balanced)
+    -s, --scan MODE     Scan mode: turbo|balanced|thorough|stealth|ironclad
+    -n, --noize PROFILE Obfuscation: balanced|aggressive|light|off
     -p, --port PORT     Local SOCKS5 port (default: 1819)
     -t, --tun NAME      TUN device name (default: tun0)
-    -n, --no-reconnect  Disable auto-reconnect
+    --no-reconnect      Disable auto-reconnect
+    --no-quick-reconnect Always scan fresh
     -d, --daemon        Run in background (daemon mode)
     -v, --verbose       Verbose logging
     -h, --help          Show this help
 
-Configuration:
-    Config file: $USER_CONF
+Anti-DPI Profiles (gool/WireGuard):
+    balanced            Default - good for most restricted networks
+    aggressive          Maximum obfuscation for strict DPI
+    light               Minimal obfuscation, faster
+    off                 No obfuscation
 
-    To customize settings, edit the config file or use environment variables:
-        AETHER_PROTOCOL=gool
-        AETHER_SCAN=balanced
-        AETHER_PORT=1819
-        AETHER_TUN=tun0
-        AETHER_AUTO_RECONNECT=true
+Scan Modes:
+    turbo               Fast, first match
+    balanced            Good balance [default]
+    thorough            Deep scan for best ping
+    stealth             Slow scan to avoid detection
+    ironclad            End-to-end data validation [most reliable]
 
 Examples:
-    $(basename "$0") start                           # Start with defaults (gool)
-    $(basename "$0") start --masque --scan turbo     # Use MASQUE, fast scan
-    $(basename "$0") start --daemon                  # Run in background
-    $(basename "$0") start --no-reconnect            # Disable auto-reconnect
-    $(basename "$0") stop
-    $(basename "$0") status
-    $(basename "$0") enable                          # Start on boot
+    $(basename "$0") start                              # Defaults (gool + balanced)
+    $(basename "$0") start --noize aggressive           # Strict DPI bypass
+    $(basename "$0") start --scan ironclad              # Best endpoint validation
+    $(basename "$0") start --noize aggressive --scan ironclad  # Maximum bypass
+    $(basename "$0") start --wireguard --noize light    # Fast, minimal obfuscation
+    $(basename "$0") profiles                           # Show all profiles
+EOF
+}
+
+show_profiles() {
+    cat <<EOF
+
+  Aethrous Anti-DPI Profiles
+  ==========================
+
+  GOOL/WireGuard Noize Profiles:
+  ─────────────────────────────
+  balanced     Default. Good balance between stealth and speed.
+               Use for most restricted networks.
+
+  aggressive   Maximum obfuscation. Sends most decoy packets.
+               Use for very strict DPI networks.
+
+  light        Minimal obfuscation. Fastest option.
+               Use for less restricted networks.
+
+  off          No obfuscation. Maximum speed.
+               Use for open networks only.
+
+
+  Scan Modes:
+  ──────────
+  turbo        Fast. First working endpoint.
+               Use when speed matters most.
+
+  balanced     Good balance. [DEFAULT]
+               Use for most situations.
+
+  thorough     Deep scan. Best ping selection.
+               Use for better performance.
+
+  stealth      Slow scan. Less noise.
+               Use for detection-sensitive networks.
+
+  ironclad     End-to-end validation. [MOST RELIABLE]
+               Verifies real traffic passing, not just handshakes.
+               Use when other modes connect but no data flows.
+
 EOF
 }
 
@@ -189,11 +256,9 @@ stop_services() {
         wait "$AETHER_PID" 2>/dev/null || true
     fi
     
-    # Kill any remaining processes
     pkill -f "hev-socks5-tunnel" 2>/dev/null || true
     pkill -f "aether" 2>/dev/null || true
     
-    # Cleanup routing
     cleanup_routing
     
     save_state "stopped"
@@ -233,19 +298,21 @@ check_binaries() {
 load_user_config() {
     if [ -f "$USER_CONF" ]; then
         log_debug "Loading config from $USER_CONF"
-        # Source user config (environment variables)
         set -a
         source "$USER_CONF"
         set +a
         
-        # Apply config values if set
         [ -n "$AETHER_PROTOCOL" ] && PROTOCOL="$AETHER_PROTOCOL"
         [ -n "$AETHER_SCAN" ] && SCAN_MODE="$AETHER_SCAN"
+        [ -n "$AETHER_NOIZE" ] && NOIZE_PROFILE="$AETHER_NOIZE"
         [ -n "$AETHER_PORT" ] && SOCKS_PORT="$AETHER_PORT"
         [ -n "$AETHER_TUN" ] && TUN_NAME="$AETHER_TUN"
         [ -n "$AETHER_TUN_IP" ] && TUN_IP="$AETHER_TUN_IP"
         [ -n "$AETHER_TUN_IPV6" ] && TUN_IPV6="$AETHER_TUN_IPV6"
         [ -n "$AETHER_MARK" ] && SOCKS_MARK="$AETHER_MARK"
+        [ -n "$AETHER_KEEPALIVE" ] && WG_KEEPALIVE="$AETHER_KEEPALIVE"
+        [ -n "$AETHER_QUICK_RECONNECT" ] && QUICK_RECONNECT="$AETHER_QUICK_RECONNECT"
+        [ -n "$AETHER_IP_VERSION" ] && IP_VERSION="$AETHER_IP_VERSION"
         [ -n "$AETHER_AUTO_RECONNECT" ] && AUTO_RECONNECT="$AETHER_AUTO_RECONNECT"
         [ -n "$AETHER_LOG_LEVEL" ] && LOG_LEVEL="$AETHER_LOG_LEVEL"
     fi
@@ -269,6 +336,14 @@ socks5:
   mark: $SOCKS_MARK
 
 misc:
+  task-stack-size: 86016
+  tcp-buffer-size: 65536
+  udp-recv-buffer-size: 524288
+  udp-copy-buffer-nums: 10
+  max-session-count: 0
+  connect-timeout: 10000
+  tcp-read-write-timeout: 300000
+  udp-read-write-timeout: 60000
   log-level: $LOG_LEVEL
 EOF
     log_debug "Generated tunnel config: $TUNNEL_CONF"
@@ -277,15 +352,12 @@ EOF
 setup_routing() {
     log_info "Setting up routing rules..."
     
-    # Disable reverse path filter
     sysctl -w net.ipv4.conf.all.rp_filter=0 2>/dev/null || true
     sysctl -w "net.ipv4.conf.$TUN_NAME.rp_filter=0" 2>/dev/null || true
     
-    # Bypass upstream socks5 server
     ip rule add fwmark "$SOCKS_MARK" lookup main pref 10 2>/dev/null || true
     ip -6 rule add fwmark "$SOCKS_MARK" lookup main pref 10 2>/dev/null || true
     
-    # Route others through tunnel
     ip route add default dev "$TUN_NAME" table 20 2>/dev/null || true
     ip rule add lookup 20 pref 20 2>/dev/null || true
     ip -6 route add default dev "$TUN_NAME" table 20 2>/dev/null || true
@@ -295,7 +367,7 @@ setup_routing() {
 }
 
 wait_for_socks5() {
-    local max_wait=30
+    local max_wait=45
     local waited=0
     
     log_info "Waiting for SOCKS5 proxy on port $SOCKS_PORT..."
@@ -314,27 +386,36 @@ wait_for_socks5() {
 }
 
 start_aether() {
-    log_info "Starting Aether (protocol: $PROTOCOL, scan: $SCAN_MODE)..."
+    log_info "Starting Aether..."
+    log_info "  Protocol:   $PROTOCOL"
+    log_info "  Scan:       $SCAN_MODE"
+    log_info "  Noize:      $NOIZE_PROFILE"
+    log_info "  IP version: $IP_VERSION"
     
-    local cmd="$AETHER_BIN"
+    # Export environment variables for Aether
+    export AETHER_PROTOCOL="$PROTOCOL"
+    export AETHER_SCAN="$SCAN_MODE"
+    export AETHER_NOIZE="$NOIZE_PROFILE"
+    export AETHER_SOCKS="127.0.0.1:$SOCKS_PORT"
+    export AETHER_IP="$IP_VERSION"
+    export AETHER_WG_KEEPALIVE="$WG_KEEPALIVE"
     
-    case "$PROTOCOL" in
-        masque)     cmd="$cmd --masque" ;;
-        wireguard)  cmd="$cmd --wireguard" ;;
-        gool)       cmd="$cmd --gool" ;;
-        *)          log_error "Unknown protocol: $PROTOCOL"; return 1 ;;
-    esac
-    
-    cmd="$cmd --scan $SCAN_MODE"
-    
-    if [ -n "${AETHER_EXTRA_ARGS:-}" ]; then
-        cmd="$cmd $AETHER_EXTRA_ARGS"
+    # Quick reconnect setting
+    if [ "$QUICK_RECONNECT" = "true" ]; then
+        export AETHER_QUICK_RECONNECT=1
+    else
+        export AETHER_QUICK_RECONNECT=0
     fi
     
-    log_debug "Running: $cmd"
+    # Extra arguments from config
+    if [ -n "${AETHER_EXTRA_ARGS:-}" ]; then
+        log_debug "Extra args: $AETHER_EXTRA_ARGS"
+    fi
+    
+    log_debug "Starting Aether binary..."
     
     # Start Aether in background
-    $cmd &
+    "$AETHER_BIN" &
     AETHER_PID=$!
     
     # Wait for SOCKS5 proxy
@@ -376,17 +457,14 @@ start_services() {
     
     save_pid
     
-    # Generate tunnel config
     generate_tunnel_config
     
-    # Start Aether
     if ! start_aether; then
         log_error "Failed to start Aether"
         rm -f "$PID_FILE"
         exit 1
     fi
     
-    # Start tunnel
     if ! start_tunnel; then
         log_error "Failed to start tunnel"
         kill "$AETHER_PID" 2>/dev/null || true
@@ -394,20 +472,20 @@ start_services() {
         exit 1
     fi
     
-    # Setup routing
     setup_routing
     
     save_state "running"
     
-    log_info "=========================================="
-    log_info "  Aether Tunnel is running"
-    log_info "  Protocol: $PROTOCOL"
-    log_info "  SOCKS5:   127.0.0.1:$SOCKS_PORT"
-    log_info "  TUN:      $TUN_NAME ($TUN_IP)"
-    log_info "=========================================="
+    log_info "============================================"
+    log_info "  Aethrous is running"
+    log_info "  Protocol:   $PROTOCOL"
+    log_info "  Noize:      $NOIZE_PROFILE"
+    log_info "  Scan:       $SCAN_MODE"
+    log_info "  SOCKS5:     127.0.0.1:$SOCKS_PORT"
+    log_info "  TUN:        $TUN_NAME ($TUN_IP)"
+    log_info "============================================"
     log_info "Press Ctrl+C to stop"
     
-    # Monitor processes
     monitor_services
 }
 
@@ -415,7 +493,6 @@ monitor_services() {
     local reconnect_count=0
     
     while true; do
-        # Check if Aether is still running
         if ! kill -0 "$AETHER_PID" 2>/dev/null; then
             log_warn "Aether process died"
             
@@ -448,7 +525,6 @@ monitor_services() {
             fi
         fi
         
-        # Check if tunnel is still running
         if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
             log_warn "hev-socks5-tunnel process died"
             
@@ -487,7 +563,6 @@ monitor_services() {
         sleep 5
     done
     
-    # If we exited the loop, clean up
     save_state "stopped"
     rm -f "$PID_FILE"
 }
@@ -496,39 +571,34 @@ show_status() {
     load_user_config
     
     echo ""
-    echo "  Aether Tunnel Status"
-    echo "  ===================="
+    echo "  Aethrous Status"
+    echo "  ================"
     echo ""
     
-    # Check main process
     if is_running; then
         echo "  Service:    RUNNING (PID: $(cat "$PID_FILE"))"
     else
         echo "  Service:    STOPPED"
     fi
     
-    # Check Aether
     if pgrep -f "aether" >/dev/null 2>&1; then
         echo "  Aether:     RUNNING (PID: $(pgrep -f aether | head -1))"
     else
         echo "  Aether:     STOPPED"
     fi
     
-    # Check tunnel
     if pgrep -f "hev-socks5-tunnel" >/dev/null 2>&1; then
         echo "  Tunnel:     RUNNING (PID: $(pgrep -f hev-socks5-tunnel | head -1))"
     else
         echo "  Tunnel:     STOPPED"
     fi
     
-    # Check SOCKS5 port
     if ss -tlnp 2>/dev/null | grep -q ":$SOCKS_PORT "; then
         echo "  SOCKS5:     LISTENING on 127.0.0.1:$SOCKS_PORT"
     else
         echo "  SOCKS5:     NOT LISTENING"
     fi
     
-    # Check TUN device
     if ip link show "$TUN_NAME" >/dev/null 2>&1; then
         echo "  TUN:        UP ($TUN_NAME)"
     else
@@ -536,32 +606,33 @@ show_status() {
     fi
     
     echo ""
-    echo "  Configuration"
-    echo "  ============="
+    echo "  Anti-DPI Configuration"
+    echo "  ======================"
     echo ""
     echo "  Protocol:       $PROTOCOL"
+    echo "  Noize profile:  $NOIZE_PROFILE"
     echo "  Scan mode:      $SCAN_MODE"
-    echo "  Auto-reconnect: $AUTO_RECONNECT"
-    echo "  Config file:    $USER_CONF"
+    echo "  IP version:     $IP_VERSION"
+    echo "  Quick reconnect: $QUICK_RECONNECT"
+    echo "  Auto-reconnect:  $AUTO_RECONNECT"
+    echo "  Config file:     $USER_CONF"
     echo ""
 }
 
 enable_autostart() {
     log_info "Enabling auto-start on boot..."
     
-    # Detect init system
     if command -v systemctl >/dev/null 2>&1; then
-        # systemd
-        cat > /tmp/aether-tunnel.service <<EOF
+        cat > /tmp/aethrous.service <<EOF
 [Unit]
-Description=Aether Tunnel - Censorship Circumvention
+Description=Aethrous - Censorship Circumvention
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=$SCRIPT_DIR/aether-tunnel.sh start --daemon
-ExecStop=$SCRIPT_DIR/aether-tunnel.sh stop
+ExecStart=$SCRIPT_DIR/aethrous.sh start --daemon
+ExecStop=$SCRIPT_DIR/aethrous.sh stop
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65535
@@ -570,14 +641,13 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
         
-        sudo mv /tmp/aether-tunnel.service /etc/systemd/system/
+        sudo mv /tmp/aethrous.service /etc/systemd/system/
         sudo systemctl daemon-reload
-        sudo systemctl enable aether-tunnel
+        sudo systemctl enable aethrous
         
         log_info "Enabled with systemd"
     else
-        # Try to add to crontab
-        (crontab -l 2>/dev/null; echo "@reboot $SCRIPT_DIR/aether-tunnel.sh start --daemon") | crontab -
+        (crontab -l 2>/dev/null; echo "@reboot $SCRIPT_DIR/aethrous.sh start --daemon") | crontab -
         log_info "Enabled with crontab"
     fi
     
@@ -588,19 +658,19 @@ disable_autostart() {
     log_info "Disabling auto-start on boot..."
     
     if command -v systemctl >/dev/null 2>&1; then
-        sudo systemctl disable aether-tunnel 2>/dev/null || true
-        sudo rm -f /etc/systemd/system/aether-tunnel.service
+        sudo systemctl disable aethrous 2>/dev/null || true
+        sudo rm -f /etc/systemd/system/aethrous.service
         sudo systemctl daemon-reload
     else
-        crontab -l 2>/dev/null | grep -v "aether-tunnel" | crontab -
+        crontab -l 2>/dev/null | grep -v "aethrous" | crontab -
     fi
     
     log_info "Auto-start disabled"
 }
 
 show_logs() {
-    if [ -f "$LOG_DIR/aether-tunnel.log" ]; then
-        tail -n 50 "$LOG_DIR/aether-tunnel.log"
+    if [ -f "$LOG_DIR/aethrous.log" ]; then
+        tail -n 50 "$LOG_DIR/aethrous.log"
     else
         echo "No logs found"
     fi
@@ -610,12 +680,11 @@ show_logs() {
 # Main
 # =============================================================================
 
-# Parse arguments
 COMMAND=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        start|stop|status|restart|enable|disable|scan|config|logs)
+        start|stop|status|restart|enable|disable|scan|config|logs|profiles)
             COMMAND="$1"
             ;;
         -g|--gool)
@@ -631,6 +700,10 @@ while [ $# -gt 0 ]; do
             shift
             SCAN_MODE="$1"
             ;;
+        -n|--noize)
+            shift
+            NOIZE_PROFILE="$1"
+            ;;
         -p|--port)
             shift
             SOCKS_PORT="$1"
@@ -639,8 +712,11 @@ while [ $# -gt 0 ]; do
             shift
             TUN_NAME="$1"
             ;;
-        -n|--no-reconnect)
+        --no-reconnect)
             AUTO_RECONNECT=false
+            ;;
+        --no-quick-reconnect)
+            QUICK_RECONNECT=false
             ;;
         -d|--daemon)
             DAEMON_MODE=true
@@ -662,20 +738,16 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# Default command
 if [ -z "$COMMAND" ]; then
     COMMAND="start"
 fi
 
-# Load config file
 load_user_config
 
-# Execute command
 case "$COMMAND" in
     start)
         if [ "$DAEMON_MODE" = "true" ]; then
-            # Run in background
-            nohup "$0" start > "$LOG_DIR/aether-tunnel.log" 2>&1 &
+            nohup "$0" start > "$LOG_DIR/aethrous.log" 2>&1 &
             log_info "Started in daemon mode (PID: $!)"
             exit 0
         fi
@@ -707,7 +779,7 @@ case "$COMMAND" in
         fi
         
         if [ "$DAEMON_MODE" = "true" ]; then
-            nohup "$0" start > "$LOG_DIR/aether-tunnel.log" 2>&1 &
+            nohup "$0" start > "$LOG_DIR/aethrous.log" 2>&1 &
             log_info "Restarted in daemon mode (PID: $!)"
             exit 0
         fi
@@ -725,44 +797,82 @@ case "$COMMAND" in
     scan)
         check_binaries
         load_user_config
+        export AETHER_SCAN="$SCAN_MODE"
+        export AETHER_NOIZE="$NOIZE_PROFILE"
         log_info "Running Aether scan..."
-        $AETHER_BIN --scan "$SCAN_MODE" --scan-only
+        $AETHER_BIN
         ;;
     config)
         mkdir -p "$CONF_DIR"
         if [ ! -f "$USER_CONF" ]; then
             cat > "$USER_CONF" <<'EOF'
-# Aether Tunnel Configuration
-# Uncomment and modify values as needed
+# Aethrous Configuration
+# =======================
+# Uncomment and modify values as needed.
+# Changes require restart to take effect.
 
 # Protocol: gool | masque | wireguard
+# Default: gool (nested WireGuard - best for censorship bypass)
 # AETHER_PROTOCOL=gool
 
-# Scan mode: quick | balanced | turbo
+# Scan mode: turbo | balanced | thorough | stealth | ironclad
+# Default: balanced
+# - turbo:      Fast, first working endpoint
+# - balanced:   Good balance [default]
+# - thorough:   Deep scan for best ping
+# - stealth:    Slow scan to avoid detection
+# - ironclad:   End-to-end data validation [most reliable]
 # AETHER_SCAN=balanced
 
+# Noize profile (obfuscation): balanced | aggressive | light | off
+# Default: balanced
+# - balanced:    Good for most restricted networks
+# - aggressive:  Maximum obfuscation for strict DPI
+# - light:       Minimal obfuscation
+# - off:         No obfuscation
+# AETHER_NOIZE=balanced
+
 # SOCKS5 proxy port
+# Default: 1819
 # AETHER_PORT=1819
 
 # TUN device name
+# Default: tun0
 # AETHER_TUN=tun0
 
 # TUN IPv4 address
+# Default: 198.18.0.1
 # AETHER_TUN_IP=198.18.0.1
 
 # TUN IPv6 address
+# Default: fc00::1
 # AETHER_TUN_IPV6=fc00::1
 
-# SOCKS mark for routing bypass
+# SOCKS mark for routing bypass (decimal or hex)
+# Default: 438
 # AETHER_MARK=438
 
-# Auto-reconnect on failure: true | false
+# WireGuard keepalive (seconds)
+# Default: 25
+# AETHER_KEEPALIVE=25
+
+# Quick reconnect to last known-good gateway
+# Default: true
+# AETHER_QUICK_RECONNECT=true
+
+# IP version for scanning: 4 | 6 | dual
+# Default: 4
+# AETHER_IP_VERSION=4
+
+# Auto-reconnect on failure
+# Default: true
 # AETHER_AUTO_RECONNECT=true
 
 # Log level: debug | info | warn | error
+# Default: info
 # AETHER_LOG_LEVEL=info
 
-# Extra Aether arguments
+# Extra Aether arguments (advanced)
 # AETHER_EXTRA_ARGS=""
 EOF
         fi
@@ -771,6 +881,9 @@ EOF
         ;;
     logs)
         show_logs
+        ;;
+    profiles)
+        show_profiles
         ;;
     *)
         usage

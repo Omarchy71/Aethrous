@@ -1,10 +1,10 @@
-# Aether Tunnel
+# Aethrous
 
-Censorship circumvention with system-wide traffic routing.
+Censorship circumvention with system-wide traffic routing and anti-DPI.
 
 ## What is this?
 
-Aether Tunnel combines two powerful projects:
+Aethrous combines two powerful projects:
 
 - **[Aether](https://github.com/CluvexStudio/Aether)** - Censorship circumvention client (MASQUE, WireGuard, nested WireGuard)
 - **[hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)** - Lightweight tun2socks implementation
@@ -29,16 +29,45 @@ Aether Tunnel combines two powerful projects:
 3. **hev-socks5-tunnel** routes all system traffic through a TUN device
 4. Traffic flows: App → TUN → SOCKS5 → Aether → Internet
 
-## Features
+## Anti-DPI Features
 
-- Automatic endpoint discovery with DPI bypass
-- MASQUE (HTTP/3 & HTTP/2), WireGuard, nested WireGuard support
-- Traffic obfuscation and protocol mimicry
-- System-wide routing (not just app-level proxy)
-- IPv4 and IPv6 dual stack
-- UDP support with Fullcone NAT
-- ICMP ping replies
-- Automatic reconnection
+### Noize Profiles (Obfuscation)
+
+Before the real handshake, Aether sends junk and random packets so the start of the connection doesn't look like a recognizable pattern.
+
+| Profile | Description |
+|---------|-------------|
+| `balanced` | Default. Good balance between stealth and speed. |
+| `aggressive` | Maximum obfuscation. Sends most decoy packets. For strict DPI. |
+| `light` | Minimal obfuscation. Fastest option. |
+| `off` | No obfuscation. Maximum speed. |
+
+### Scan Modes
+
+| Mode | Description |
+|------|-------------|
+| `turbo` | Fast, first working endpoint |
+| `balanced` | Good balance [default] |
+| `thorough` | Deep scan for best ping |
+| ` stealth` | Slow scan to avoid detection |
+| `ironclad` | End-to-end data validation [most reliable] |
+
+### Recommended Configurations
+
+**For strict DPI networks:**
+```bash
+./aethrous.sh start --noize aggressive --scan ironclad
+```
+
+**For moderate restrictions:**
+```bash
+./aethrous.sh start --noize balanced --scan balanced
+```
+
+**For speed (less restricted):**
+```bash
+./aethrous.sh start --noize light --scan turbo
+```
 
 ## Linux Installation
 
@@ -56,8 +85,8 @@ source ~/.cargo/env
 ### Build
 
 ```bash
-git clone https://github.com/yourusername/aether-tunnel.git
-cd aether-tunnel
+git clone https://github.com/Omarchy71/Aethrous.git
+cd Aethrous
 chmod +x build.sh
 ./build.sh
 ```
@@ -65,20 +94,26 @@ chmod +x build.sh
 ### Run
 
 ```bash
-# Start with MASQUE protocol (default)
-sudo ./aether-tunnel.sh start
+# Start with gool + default anti-DPI (recommended)
+sudo ./aethrous.sh
 
-# Start with WireGuard protocol
-sudo ./aether-tunnel.sh start --wireguard
+# Start with aggressive anti-DPI
+sudo ./aethrous.sh start --noize aggressive
 
-# Start with nested WireGuard (gool)
-sudo ./aether-tunnel.sh start --gool
+# Start with ironclad scan (best validation)
+sudo ./aethrous.sh start --scan ironclad
+
+# Start with maximum anti-DPI
+sudo ./aethrous.sh start --noize aggressive --scan ironclad
 
 # Check status
-./aether-tunnel.sh status
+./aethrous.sh status
+
+# Show all profiles
+./aethrous.sh profiles
 
 # Stop
-sudo ./aether-tunnel.sh stop
+sudo ./aethrous.sh stop
 ```
 
 ## Android
@@ -109,66 +144,69 @@ sudo ./aether-tunnel.sh stop
 
 ## Configuration
 
-Edit `conf/tunnel.yml` to customize:
+Edit `conf/user.conf` to customize:
 
-```yaml
-tunnel:
-  name: tun0
-  mtu: 8500
-  ipv4: 198.18.0.1
-  icmp: 'reply'
+```bash
+# Protocol
+AETHER_PROTOCOL=gool
 
-socks5:
-  address: 127.0.0.1
-  port: 1819
-  udp: 'udp'
-  mark: 438
+# Anti-DPI
+AETHER_NOIZE=balanced          # or aggressive for strict DPI
+AETHER_SCAN=balanced           # or ironclad for best validation
+
+# Network
+AETHER_PORT=1819
+AETHER_TUN=tun0
+
+# Behavior
+AETHER_QUICK_RECONNECT=true
+AETHER_AUTO_RECONNECT=true
+```
+
+Or use command line:
+```bash
+./aethrous.sh start --noize aggressive --scan ironclad --port 1080
 ```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AETHER_PROTOCOL` | masque | Protocol: masque, wireguard, gool |
-| `AETHER_SCAN` | balanced | Scan mode: quick, balanced, turbo |
-| `SOCKS_PORT` | 1819 | Local SOCKS5 port |
-| `TUN_NAME` | tun0 | TUN device name |
-| `TUN_IP` | 198.18.0.1 | TUN IPv4 address |
+| `AETHER_PROTOCOL` | gool | Protocol: gool, masque, wireguard |
+| `AETHER_NOIZE` | balanced | Obfuscation: balanced, aggressive, light, off |
+| `AETHER_SCAN` | balanced | Scan: turbo, balanced, thorough, stealth, ironclad |
+| `AETHER_PORT` | 1819 | SOCKS5 port |
+| `AETHER_TUN` | tun0 | TUN device |
+| `AETHER_IP_VERSION` | 4 | IP version: 4, 6, dual |
+| `AETHER_KEEPALIVE` | 25 | WireGuard keepalive (seconds) |
+| `AETHER_QUICK_RECONNECT` | true | Quick reconnect |
+| `AETHER_AUTO_RECONNECT` | true | Auto-reconnect on failure |
 
 ## Troubleshooting
 
 ### Check if services are running
 
 ```bash
-./aether-tunnel.sh status
-```
-
-### View logs
-
-```bash
-# Aether logs
-journalctl -u aether-tunnel
-
-# Or run in verbose mode
-sudo ./aether-tunnel.sh start --verbose
+./aethrous.sh status
 ```
 
 ### Common issues
 
 1. **Permission denied**: Run with `sudo`
 2. **TUN device not found**: Load kernel module: `sudo modprobe tun`
-3. **Port already in use**: Change port in config or stop other services
+3. **Connects but no data**: Try `--scan ironclad` for end-to-end validation
+4. **Keeps disconnecting**: Try `--noize aggressive` for stronger obfuscation
 
 ## Architecture
 
-This project is a wrapper that combines:
+This project combines:
 
 - **Aether** (AGPL-3.0) - Censorship circumvention
 - **hev-socks5-tunnel** (MIT) - tun2socks implementation
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License
 
 ## Credits
 
