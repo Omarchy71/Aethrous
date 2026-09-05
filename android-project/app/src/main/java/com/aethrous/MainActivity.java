@@ -7,14 +7,26 @@ import android.os.Bundle;
 import android.widget.Button;
 import android.widget.TextView;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
-    private static final int VPN_REQUEST_CODE = 100;
     
     private Button btnConnect;
     private TextView txtStatus;
     private boolean isConnected = false;
+    
+    private final ActivityResultLauncher<Intent> vpnPermissionLauncher = 
+        registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == Activity.RESULT_OK) {
+                onVpnPermissionGranted();
+            } else {
+                if (txtStatus != null) {
+                    txtStatus.setText("Status: VPN permission denied");
+                }
+            }
+        });
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -24,13 +36,15 @@ public class MainActivity extends AppCompatActivity {
         btnConnect = findViewById(R.id.btnConnect);
         txtStatus = findViewById(R.id.txtStatus);
         
-        btnConnect.setOnClickListener(v -> {
-            if (isConnected) {
-                stopVpn();
-            } else {
-                startVpn();
-            }
-        });
+        if (btnConnect != null) {
+            btnConnect.setOnClickListener(v -> {
+                if (isConnected) {
+                    stopVpn();
+                } else {
+                    startVpn();
+                }
+            });
+        }
         
         updateUI();
     }
@@ -42,10 +56,9 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void startVpn() {
-        // Check VPN permission
         Intent vpnIntent = VpnService.prepare(this);
         if (vpnIntent != null) {
-            startActivityForResult(vpnIntent, VPN_REQUEST_CODE);
+            vpnPermissionLauncher.launch(vpnIntent);
         } else {
             onVpnPermissionGranted();
         }
@@ -68,6 +81,8 @@ public class MainActivity extends AppCompatActivity {
     
     private void updateUI() {
         runOnUiThread(() -> {
+            if (btnConnect == null || txtStatus == null) return;
+            
             if (isConnected) {
                 btnConnect.setText("Disconnect");
                 txtStatus.setText("Status: Connected");
@@ -78,17 +93,5 @@ public class MainActivity extends AppCompatActivity {
                 txtStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark, getTheme()));
             }
         });
-    }
-    
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == VPN_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK) {
-                onVpnPermissionGranted();
-            } else {
-                txtStatus.setText("Status: VPN permission denied");
-            }
-        }
     }
 }

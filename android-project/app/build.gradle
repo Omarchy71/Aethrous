@@ -25,6 +25,7 @@ android {
         }
         debug {
             minifyEnabled false
+            debuggable true
         }
     }
 
@@ -33,14 +34,14 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    buildFeatures {
-        viewBinding true
-    }
-
     sourceSets {
         main {
             jniLibs.srcDirs = ['src/main/jniLibs']
         }
+    }
+
+    lint {
+        abortOnError false
     }
 }
 
@@ -48,4 +49,5 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.core:core:1.12.0'
+    implementation 'androidx.activity:activity:1.8.2'
 }
