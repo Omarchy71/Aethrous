@@ -29,38 +29,16 @@ public class AethrousVpnService extends VpnService {
     private static final String SOCKS5_ADDRESS = "127.0.0.1";
     private static final int SOCKS5_PORT = 1819;
     private static final String TUN_ADDRESS = "198.18.0.1";
-    private static final String TUN_IPV6 = "fc00::1";
     private static final int MTU = 1280;
 
     private ParcelFileDescriptor vpnInterface;
     private volatile boolean isRunning = false;
     private Process aetherProcess;
-    private Thread aetherThread;
-    private Thread monitorThread;
+    private Process tun2socksProcess;
 
     private String protocol = "gool";
     private String noize = "balanced";
     private String scanMode = "balanced";
-    private String ipVersion = "4";
-    private boolean quickReconnect = true;
-    private int keepalive = 5;
-    private boolean useH2 = false;
-    private boolean fragment = false;
-    private String customPeer = "";
-    private String wiwOuter = "";
-    private String wiwInner = "";
-
-    static {
-        try {
-            System.loadLibrary("hev-socks5-tunnel");
-        } catch (UnsatisfiedLinkError e) {
-            Log.e(TAG, "Failed to load hev-socks5-tunnel native library", e);
-        }
-    }
-
-    private static native boolean TProxyStartService(String configPath, int fd);
-    private static native boolean TProxyStopService();
-    private static native boolean TProxyIsRunning();
 
     @Override
     public void onCreate() {
@@ -86,35 +64,27 @@ public class AethrousVpnService extends VpnService {
             if (noize == null) noize = "balanced";
             scanMode = intent.getStringExtra("scan_mode");
             if (scanMode == null) scanMode = "balanced";
-            ipVersion = intent.getStringExtra("ip_version");
-            if (ipVersion == null) ipVersion = "4";
-            quickReconnect = intent.getBooleanExtra("quick_reconnect", true);
-            keepalive = intent.getIntExtra("keepalive", 5);
-            useH2 = intent.getBooleanExtra("use_h2", false);
-            fragment = intent.getBooleanExtra("fragment", false);
-            customPeer = intent.getStringExtra("custom_peer");
-            if (customPeer == null) customPeer = "";
-            wiwOuter = intent.getStringExtra("wiw_outer");
-            if (wiwOuter == null) wiwOuter = "";
-            wiwInner = intent.getStringExtra("wiw_inner");
-            if (wiwInner == null) wiwInner = "";
         }
 
         startForeground(NOTIFICATION_ID, buildNotification("Starting..."));
         startVpn();
-
         return START_STICKY;
     }
 
     private void startVpn() {
         new Thread(() -> {
             try {
+                updateNotification("Extracting binaries...");
+                if (!extractBinaries()) {
+                    throw new Exception("Failed to extract binaries");
+                }
+
                 updateNotification("Starting Aether proxy...");
                 if (!startAether()) {
                     throw new Exception("Failed to start Aether");
                 }
 
-                updateNotification("Waiting for proxy...");
+                updateNotification("Waiting for SOCKS5 proxy...");
                 if (!waitForSocks5(30)) {
                     throw new Exception("Timeout waiting for SOCKS5 proxy");
                 }
@@ -125,20 +95,14 @@ public class AethrousVpnService extends VpnService {
                     throw new Exception("Failed to create VPN interface");
                 }
 
-                updateNotification("Starting tunnel...");
-                String configPath = createTunnelConfig();
-                if (configPath == null) {
-                    throw new Exception("Failed to create tunnel config");
-                }
-
-                if (!TProxyStartService(configPath, vpnInterface.getFd())) {
-                    throw new Exception("Failed to start tunnel");
+                updateNotification("Starting tun2socks...");
+                if (!startTun2Socks()) {
+                    throw new Exception("Failed to start tun2socks");
                 }
 
                 isRunning = true;
                 updateNotification("Connected (" + protocol.toUpperCase() + ")");
-                Log.i(TAG, "VPN started: protocol=" + protocol + " noize=" + noize + " scan=" + scanMode);
-                startMonitor();
+                Log.i(TAG, "VPN started");
 
             } catch (Exception e) {
                 Log.e(TAG, "Failed to start VPN", e);
@@ -148,114 +112,134 @@ public class AethrousVpnService extends VpnService {
         }).start();
     }
 
-    private void startMonitor() {
-        monitorThread = new Thread(() -> {
-            while (isRunning) {
-                try {
-                    Thread.sleep(5000);
-                    if (!TProxyIsRunning()) {
-                        Log.w(TAG, "Tunnel died, attempting reconnect...");
-                        updateNotification("Reconnecting...");
-                        stopVpnInternal();
-                        Thread.sleep(2000);
-                        if (quickReconnect) {
-                            startVpn();
-                        }
-                        break;
+    private boolean extractBinaries() {
+        try {
+            String nativeDir = getApplicationInfo().nativeLibraryDir;
+            File filesDir = getFilesDir();
+
+            String[] binaries = {"aether", "hev-socks5-tunnel"};
+            for (String bin : binaries) {
+                File srcFile = new File(nativeDir, bin);
+                File dstFile = new File(filesDir, bin);
+
+                if (!dstFile.exists() || srcFile.lastModified() > dstFile.lastModified()) {
+                    java.io.InputStream in = new java.io.FileInputStream(srcFile);
+                    java.io.FileOutputStream out = new java.io.FileOutputStream(dstFile);
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = in.read(buf)) > 0) {
+                        out.write(buf, 0, len);
                     }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+                    out.close();
+                    in.close();
                 }
+                dstFile.setExecutable(true);
             }
-        });
-        monitorThread.setDaemon(true);
-        monitorThread.start();
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to extract binaries", e);
+            return false;
+        }
     }
 
     private boolean startAether() {
         try {
             String aetherPath = getFilesDir() + "/aether";
             File aetherFile = new File(aetherPath);
-
             if (!aetherFile.exists()) {
-                Log.e(TAG, "Aether binary not found: " + aetherPath);
+                Log.e(TAG, "Aether binary not found");
                 return false;
             }
 
-            aetherFile.setExecutable(true);
-
             ArrayList<String> cmd = new ArrayList<>();
             cmd.add(aetherPath);
-
             cmd.add("--" + protocol);
-
             cmd.add("--scan");
             cmd.add(scanMode);
-
-            cmd.add("-" + ipVersion);
-
+            cmd.add("-4");
             cmd.add("--keepalive");
-            cmd.add(String.valueOf(keepalive));
-
-            if (quickReconnect) {
-                cmd.add("--quick-reconnect");
-            } else {
-                cmd.add("--no-quick-reconnect");
-            }
-
-            if (useH2 && "masque".equals(protocol)) {
-                cmd.add("--h2");
-                if (fragment) {
-                    cmd.add("--fragment");
-                }
-            }
+            cmd.add("5");
+            cmd.add("--quick-reconnect");
 
             if (!"off".equals(noize)) {
                 cmd.add("--noize");
                 cmd.add(noize);
             }
 
-            if (!customPeer.isEmpty()) {
-                cmd.add("--peer");
-                cmd.add(customPeer);
-            }
-
-            if (!wiwOuter.isEmpty()) {
-                cmd.add("--wiw-outer");
-                cmd.add(wiwOuter);
-            }
-
-            if (!wiwInner.isEmpty()) {
-                cmd.add("--wiw-inner");
-                cmd.add(wiwInner);
-            }
-
-            Log.i(TAG, "Aether command: " + cmd.toString());
+            Log.i(TAG, "Starting Aether: " + cmd.toString());
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             pb.directory(getFilesDir());
+            pb.environment().put("HOME", getFilesDir().getAbsolutePath());
 
             aetherProcess = pb.start();
 
-            aetherThread = new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(
+            Thread reader = new Thread(() -> {
+                try (BufferedReader br = new BufferedReader(
                         new InputStreamReader(aetherProcess.getInputStream()))) {
                     String line;
-                    while ((line = reader.readLine()) != null) {
+                    while ((line = br.readLine()) != null) {
                         Log.d(TAG, "Aether: " + line);
                     }
                 } catch (IOException e) {
                     Log.e(TAG, "Error reading Aether output", e);
                 }
             });
-            aetherThread.setDaemon(true);
-            aetherThread.start();
+            reader.setDaemon(true);
+            reader.start();
 
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Failed to start Aether", e);
+            return false;
+        }
+    }
+
+    private boolean startTun2Socks() {
+        try {
+            String hevPath = getFilesDir() + "/hev-socks5-tunnel";
+            File hevFile = new File(hevPath);
+            if (!hevFile.exists()) {
+                Log.e(TAG, "hev-socks5-tunnel binary not found");
+                return false;
+            }
+
+            String configPath = createTunConfig();
+            if (configPath == null) {
+                return false;
+            }
+
+            ArrayList<String> cmd = new ArrayList<>();
+            cmd.add(hevPath);
+            cmd.add("-c");
+            cmd.add(configPath);
+
+            Log.i(TAG, "Starting tun2socks: " + cmd.toString());
+
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            pb.directory(getFilesDir());
+
+            tun2socksProcess = pb.start();
+
+            Thread reader = new Thread(() -> {
+                try (BufferedReader br = new BufferedReader(
+                        new InputStreamReader(tun2socksProcess.getInputStream()))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        Log.d(TAG, "Tun2socks: " + line);
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, "Error reading tun2socks output", e);
+                }
+            });
+            reader.setDaemon(true);
+            reader.start();
+
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start tun2socks", e);
             return false;
         }
     }
@@ -286,10 +270,6 @@ public class AethrousVpnService extends VpnService {
         builder.addDnsServer("8.8.4.4");
         builder.setMtu(MTU);
 
-        if ("6".equals(ipVersion) || "dual".equals(ipVersion)) {
-            builder.addAddress(TUN_IPV6, 128);
-        }
-
         try {
             builder.addDisallowedApplication(getPackageName());
         } catch (Exception e) {
@@ -299,47 +279,42 @@ public class AethrousVpnService extends VpnService {
         return builder.establish();
     }
 
-    private String createTunnelConfig() {
-        String ipv6Line = ("6".equals(ipVersion) || "dual".equals(ipVersion))
-            ? "  ipv6: '" + TUN_IPV6 + "'\n" : "";
-
+    private String createTunConfig() {
         String config =
-            "tunnel:\n" +
+            "thread: {\n" +
+            "  count: 1\n" +
+            "}\n" +
+            "log: {\n" +
+            "  level: warn\n" +
+            "}\n" +
+            "tunnel: {\n" +
             "  name: tun0\n" +
             "  mtu: " + MTU + "\n" +
-            "  multi-queue: false\n" +
             "  ipv4: " + TUN_ADDRESS + "\n" +
-            ipv6Line +
-            "  icmp: 'off'\n" +
-            "\n" +
-            "socks5:\n" +
-            "  address: " + SOCKS5_ADDRESS + "\n" +
+            "}\n" +
+            "socks5: {\n" +
             "  port: " + SOCKS5_PORT + "\n" +
-            "  udp: 'udp'\n" +
-            "  mark: 438\n" +
-            "\n" +
-            "misc:\n" +
-            "  log-level: warn\n";
+            "  address: '" + SOCKS5_ADDRESS + "'\n" +
+            "}\n";
 
         try {
-            File configFile = new File(getFilesDir(), "tunnel.yml");
+            File configFile = new File(getFilesDir(), "hev-socks5.conf");
             try (FileWriter writer = new FileWriter(configFile)) {
                 writer.write(config);
             }
             return configFile.getAbsolutePath();
         } catch (IOException e) {
-            Log.e(TAG, "Failed to write config", e);
+            Log.e(TAG, "Failed to write tun2socks config", e);
             return null;
         }
     }
 
-    private void stopVpnInternal() {
+    private void stopVpn() {
         isRunning = false;
 
-        try {
-            TProxyStopService();
-        } catch (Exception e) {
-            Log.e(TAG, "Error stopping tunnel", e);
+        if (tun2socksProcess != null) {
+            tun2socksProcess.destroy();
+            tun2socksProcess = null;
         }
 
         if (aetherProcess != null) {
@@ -355,10 +330,7 @@ public class AethrousVpnService extends VpnService {
             }
             vpnInterface = null;
         }
-    }
 
-    private void stopVpn() {
-        stopVpnInternal();
         stopForeground(true);
         stopSelf();
         Log.i(TAG, "VPN stopped");
@@ -379,12 +351,8 @@ public class AethrousVpnService extends VpnService {
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "Aethrous",
-                NotificationManager.IMPORTANCE_LOW
-            );
+                CHANNEL_ID, "Aethrous", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("Aethrous VPN Service");
-
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(channel);
@@ -396,15 +364,13 @@ public class AethrousVpnService extends VpnService {
         Intent mainIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
             this, 0, mainIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Intent stopIntent = new Intent(this, AethrousVpnService.class);
         stopIntent.setAction("STOP");
         PendingIntent stopPendingIntent = PendingIntent.getService(
             this, 1, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Aethrous")
