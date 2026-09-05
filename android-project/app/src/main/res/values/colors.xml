@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary Colors -->
+    <color name="primary">#FF6C63FF</color>
+    <color name="primary_dark">#FF5A52D5</color>
+    <color name="primary_light">#FF8A82FF</color>
+    
+    <!-- Accent Colors -->
+    <color name="accent">#FF00D9FF</color>
+    <color name="accent_dark">#FF00B8D4</color>
+    
+    <!-- Background Colors -->
+    <color name="background_dark">#FF0D1117</color>
+    <color name="background_card">#FF161B22</color>
+    <color name="background_card_elevated">#FF1C2128</color>
+    
+    <!-- Status Colors -->
+    <color name="status_connected">#FF00E676</color>
+    <color name="status_disconnected">#FFFF5252</color>
+    <color name="status_connecting">#FFFFAB00</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFB0BEC5</color>
+    <color name="text_hint">#FF546E7A</color>
+    
+    <!-- Button Colors -->
+    <color name="button_connect">#FF00E676</color>
+    <color name="button_connect_pressed">#FF00C853</color>
+    <color name="button_disconnect">#FFFF5252</color>
+    <color name="button_disconnect_pressed">#FFD32F2F</color>
+    
+    <!-- Protocol Colors -->
+    <color name="protocol_gool">#FF6C63FF</color>
+    <color name="protocol_masque">#FF00D9FF</color>
+    <color name="protocol_wireguard">#FFFFAB00</color>
+    
+    <!-- Misc -->
+    <color name="divider">#FF21262D</color>
+    <color name="ripple">#20FFFFFF</color>
+    <color name="shadow">#40000000</color>
+</resources>
