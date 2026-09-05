@@ -1,0 +1,67 @@
+tunnel:
+  # TUN device name
+  name: tun0
+  # Interface MTU
+  mtu: 8500
+  # Multi-queue (set true for better performance on multi-core)
+  multi-queue: false
+  # IPv4 address for TUN interface
+  ipv4: 198.18.0.1
+  # IPv6 address for TUN interface
+  ipv6: 'fc00::1'
+  # ICMP Echo mode (off|reply)
+  icmp: 'reply'
+  # Optional: post-up script
+  # post-up-script: /path/to/up.sh
+  # Optional: pre-down script
+  # pre-down-script: /path/to/down.sh
+
+socks5:
+  # SOCKS5 proxy address (Aether's proxy)
+  address: 127.0.0.1
+  # SOCKS5 proxy port
+  port: 1819
+  # UDP relay mode (tcp|udp)
+  udp: 'udp'
+  # Optional: override UDP address
+  # udp-address: ''
+  # Optional: pipeline mode for faster handshake
+  # pipeline: false
+  # Optional: authentication
+  # username: ''
+  # password: ''
+  # Socket mark for routing bypass
+  mark: 438
+  # Optional: TCP fastopen
+  # tcp-fastopen: false
+
+# Optional: DNS mapping
+# mapdns:
+#   address: 198.18.0.2
+#   port: 53
+#   network: 100.64.0.0
+#   netmask: 255.192.0.0
+#   cache-size: 10000
+
+# Optional: Advanced settings
+misc:
+  # Task stack size (bytes)
+  task-stack-size: 86016
+  # TCP buffer size (bytes)
+  tcp-buffer-size: 65536
+  # UDP socket recv buffer size (bytes)
+  udp-recv-buffer-size: 524288
+  # Number of UDP buffers in splice
+  udp-copy-buffer-nums: 10
+  # Maximum session count (0: unlimited)
+  max-session-count: 0
+  # Connect timeout (ms)
+  connect-timeout: 10000
+  # TCP read-write timeout (ms)
+  tcp-read-write-timeout: 300000
+  # UDP read-write timeout (ms)
+  udp-read-write-timeout: 60000
+  # Log file (null for no logging)
+  log-file: null
+  # Log level (debug|info|warn|error)
+  log-level: warn
