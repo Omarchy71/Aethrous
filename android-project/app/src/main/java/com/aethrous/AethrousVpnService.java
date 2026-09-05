@@ -34,7 +34,6 @@ public class AethrousVpnService extends VpnService {
     private ParcelFileDescriptor vpnInterface;
     private volatile boolean isRunning = false;
     private Process aetherProcess;
-    private Process tun2socksProcess;
 
     private String protocol = "gool";
     private String noize = "balanced";
@@ -74,9 +73,9 @@ public class AethrousVpnService extends VpnService {
     private void startVpn() {
         new Thread(() -> {
             try {
-                updateNotification("Extracting binaries...");
-                if (!extractBinaries()) {
-                    throw new Exception("Failed to extract binaries");
+                updateNotification("Extracting Aether...");
+                if (!extractAether()) {
+                    throw new Exception("Failed to extract Aether binary");
                 }
 
                 updateNotification("Starting Aether proxy...");
@@ -96,13 +95,21 @@ public class AethrousVpnService extends VpnService {
                 }
 
                 updateNotification("Starting tun2socks...");
-                if (!startTun2Socks()) {
+                String configPath = createTunConfig();
+                if (configPath == null) {
+                    throw new Exception("Failed to create tun2socks config");
+                }
+
+                int tunFd = vpnInterface.getFd();
+                Log.i(TAG, "Starting tun2socks with TUN fd: " + tunFd);
+
+                if (!TProxyService.TProxyStartService(configPath, tunFd)) {
                     throw new Exception("Failed to start tun2socks");
                 }
 
                 isRunning = true;
                 updateNotification("Connected (" + protocol.toUpperCase() + ")");
-                Log.i(TAG, "VPN started");
+                Log.i(TAG, "VPN started successfully");
 
             } catch (Exception e) {
                 Log.e(TAG, "Failed to start VPN", e);
@@ -112,7 +119,7 @@ public class AethrousVpnService extends VpnService {
         }).start();
     }
 
-    private boolean extractBinaries() {
+    private boolean extractAether() {
         try {
             File filesDir = getFilesDir();
             String arch = System.getProperty("os.arch", "");
@@ -128,33 +135,25 @@ public class AethrousVpnService extends VpnService {
                 archSuffix = "arm64";
             }
 
-            String[][] binaries = {
-                {"aether-" + archSuffix, "aether"},
-                {"hev-socks5-tunnel-" + archSuffix, "hev-socks5-tunnel"}
-            };
+            String assetName = "aether-" + archSuffix;
+            File dstFile = new File(filesDir, "aether");
 
-            for (String[] pair : binaries) {
-                String assetName = pair[0];
-                String execName = pair[1];
-                File dstFile = new File(filesDir, execName);
-
-                if (!dstFile.exists()) {
-                    java.io.InputStream in = getAssets().open(assetName);
-                    java.io.FileOutputStream out = new java.io.FileOutputStream(dstFile);
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = in.read(buf)) > 0) {
-                        out.write(buf, 0, len);
-                    }
-                    out.close();
-                    in.close();
+            if (!dstFile.exists()) {
+                java.io.InputStream in = getAssets().open(assetName);
+                java.io.FileOutputStream out = new java.io.FileOutputStream(dstFile);
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = in.read(buf)) > 0) {
+                    out.write(buf, 0, len);
                 }
-                dstFile.setExecutable(true);
-                Log.i(TAG, "Extracted: " + execName + " for " + archSuffix);
+                out.close();
+                in.close();
             }
+            dstFile.setExecutable(true);
+            Log.i(TAG, "Extracted Aether for " + archSuffix);
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to extract binaries", e);
+            Log.e(TAG, "Failed to extract Aether", e);
             return false;
         }
     }
@@ -213,54 +212,6 @@ public class AethrousVpnService extends VpnService {
         }
     }
 
-    private boolean startTun2Socks() {
-        try {
-            String hevPath = getFilesDir() + "/hev-socks5-tunnel";
-            File hevFile = new File(hevPath);
-            if (!hevFile.exists()) {
-                Log.e(TAG, "hev-socks5-tunnel binary not found");
-                return false;
-            }
-
-            String configPath = createTunConfig();
-            if (configPath == null) {
-                return false;
-            }
-
-            ArrayList<String> cmd = new ArrayList<>();
-            cmd.add(hevPath);
-            cmd.add("-c");
-            cmd.add(configPath);
-
-            Log.i(TAG, "Starting tun2socks: " + cmd.toString());
-
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            pb.directory(getFilesDir());
-
-            tun2socksProcess = pb.start();
-
-            Thread reader = new Thread(() -> {
-                try (BufferedReader br = new BufferedReader(
-                        new InputStreamReader(tun2socksProcess.getInputStream()))) {
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        Log.d(TAG, "Tun2socks: " + line);
-                    }
-                } catch (IOException e) {
-                    Log.e(TAG, "Error reading tun2socks output", e);
-                }
-            });
-            reader.setDaemon(true);
-            reader.start();
-
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start tun2socks", e);
-            return false;
-        }
-    }
-
     private boolean waitForSocks5(int maxSeconds) {
         for (int i = 0; i < maxSeconds; i++) {
             try (Socket socket = new Socket()) {
@@ -298,21 +249,13 @@ public class AethrousVpnService extends VpnService {
 
     private String createTunConfig() {
         String config =
-            "thread: {\n" +
-            "  count: 1\n" +
-            "}\n" +
-            "log: {\n" +
-            "  level: warn\n" +
-            "}\n" +
-            "tunnel: {\n" +
-            "  name: tun0\n" +
+            "tunnel:\n" +
             "  mtu: " + MTU + "\n" +
             "  ipv4: " + TUN_ADDRESS + "\n" +
-            "}\n" +
-            "socks5: {\n" +
+            "socks5:\n" +
             "  port: " + SOCKS5_PORT + "\n" +
             "  address: '" + SOCKS5_ADDRESS + "'\n" +
-            "}\n";
+            "  udp: 'udp'\n";
 
         try {
             File configFile = new File(getFilesDir(), "hev-socks5.conf");
@@ -329,9 +272,10 @@ public class AethrousVpnService extends VpnService {
     private void stopVpn() {
         isRunning = false;
 
-        if (tun2socksProcess != null) {
-            tun2socksProcess.destroy();
-            tun2socksProcess = null;
+        try {
+            TProxyService.TProxyStopService();
+        } catch (Exception e) {
+            Log.e(TAG, "Error stopping tun2socks", e);
         }
 
         if (aetherProcess != null) {

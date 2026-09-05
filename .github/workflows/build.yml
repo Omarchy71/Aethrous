@@ -23,6 +23,34 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
+    - name: Build hev-socks5-tunnel
+      run: |
+        git clone --recursive https://github.com/heiher/hev-socks5-tunnel /tmp/hev-socks5-tunnel
+        cd /tmp/hev-socks5-tunnel
+        
+        # Override package name for our app
+        sed -i 's/APP_CFLAGS := -O3/APP_CFLAGS := -O3 -DPKGNAME=com\/aethrous -DCLSNAME=TProxyService/' Application.mk
+        
+        # Build using ndk-build
+        $ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk/ | head -1)/ndk-build \
+          APP_ABI="armeabi-v7a arm64-v8a x86_64" \
+          APP_PLATFORM=android-29 \
+          NDK_PROJECT_PATH=. \
+          APP_BUILD_SCRIPT=Android.mk \
+          NDK_APPLICATION_MK=Application.mk
+        
+        # Copy .so files to jniLibs
+        mkdir -p android-project/app/src/main/jniLibs/armeabi-v7a
+        mkdir -p android-project/app/src/main/jniLibs/arm64-v8a
+        mkdir -p android-project/app/src/main/jniLibs/x86_64
+        
+        cp libs/armeabi-v7a/libhev-socks5-tunnel.so android-project/app/src/main/jniLibs/armeabi-v7a/
+        cp libs/arm64-v8a/libhev-socks5-tunnel.so android-project/app/src/main/jniLibs/arm64-v8a/
+        cp libs/x86_64/libhev-socks5-tunnel.so android-project/app/src/main/jniLibs/x86_64/
+        
+        echo "Built hev-socks5-tunnel .so files:"
+        ls -la android-project/app/src/main/jniLibs/*/libhev-socks5-tunnel.so
+
     - name: Build APK
       working-directory: android-project
       run: |
