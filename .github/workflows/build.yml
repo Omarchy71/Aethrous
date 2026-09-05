@@ -23,13 +23,21 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
+    - name: Accept Android SDK licenses
+      run: yes | sdkmanager --licenses || true
+
+    - name: Install Android SDK components
+      run: |
+        sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
     - name: Build Debug APK
       working-directory: android-project
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace
+        ./gradlew assembleDebug --stacktrace --info
 
     - name: Build Release APK
+      if: success()
       working-directory: android-project
       run: ./gradlew assembleRelease --stacktrace
 
