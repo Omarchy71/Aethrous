@@ -3,6 +3,7 @@ package com.aethrous;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Build;
@@ -40,12 +41,15 @@ public class MainActivity extends AppCompatActivity {
     private TextView chipOff;
 
     private boolean isConnected = false;
+    private boolean autoStarted = false;
     private String selectedProtocol = "gool";
     private String selectedNoize = "balanced";
 
     private long connectionStartTime = 0;
     private Handler timerHandler;
     private Runnable timerRunnable;
+
+    private SharedPreferences prefs;
 
     private final ActivityResultLauncher<Intent> vpnPermissionLauncher =
         registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
@@ -67,11 +71,30 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        prefs = getSharedPreferences("aethrous_prefs", MODE_PRIVATE);
+        selectedProtocol = prefs.getString("protocol", "gool");
+        selectedNoize = prefs.getString("noize", "balanced");
+
         initViews();
         setupClickListeners();
         setupTimer();
         requestNotificationPermission();
         updateUI();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateUI();
+
+        if (!autoStarted) {
+            autoStarted = true;
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (!isConnected) {
+                    startVpn();
+                }
+            }, 500);
+        }
     }
 
     private void requestNotificationPermission() {
@@ -115,13 +138,15 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (btnSettings != null) {
-            btnSettings.setOnClickListener(v ->
-                Toast.makeText(this, "Settings coming soon", Toast.LENGTH_SHORT).show());
+            btnSettings.setOnClickListener(v -> {
+                Intent intent = new Intent(this, SettingsActivity.class);
+                startActivity(intent);
+            });
         }
 
         if (btnScan != null) {
             btnScan.setOnClickListener(v ->
-                Toast.makeText(this, "Scan coming soon", Toast.LENGTH_SHORT).show());
+                Toast.makeText(this, "Scan modes available in Settings", Toast.LENGTH_SHORT).show());
         }
 
         if (chipGool != null) {
@@ -172,12 +197,14 @@ public class MainActivity extends AppCompatActivity {
     private void selectProtocol(String protocol) {
         if (isConnected) return;
         selectedProtocol = protocol;
+        prefs.edit().putString("protocol", protocol).apply();
         updateProtocolChips();
     }
 
     private void selectNoize(String noize) {
         if (isConnected) return;
         selectedNoize = noize;
+        prefs.edit().putString("noize", noize).apply();
         updateNoizeChips();
     }
 
@@ -257,6 +284,27 @@ public class MainActivity extends AppCompatActivity {
         startIntent.setAction("START");
         startIntent.putExtra("protocol", selectedProtocol);
         startIntent.putExtra("noize", selectedNoize);
+
+        String scanMode = prefs.getString("scan_mode", "balanced");
+        String ipVersion = prefs.getString("ip_version", "4");
+        boolean quickReconnect = prefs.getBoolean("quick_reconnect", true);
+        int keepalive = prefs.getInt("keepalive", 5);
+        boolean useH2 = prefs.getBoolean("use_h2", false);
+        boolean fragment = prefs.getBoolean("fragment", false);
+        String customPeer = prefs.getString("custom_peer", "");
+        String wiwOuter = prefs.getString("wiw_outer", "");
+        String wiwInner = prefs.getString("wiw_inner", "");
+
+        startIntent.putExtra("scan_mode", scanMode);
+        startIntent.putExtra("ip_version", ipVersion);
+        startIntent.putExtra("quick_reconnect", quickReconnect);
+        startIntent.putExtra("keepalive", keepalive);
+        startIntent.putExtra("use_h2", useH2);
+        startIntent.putExtra("fragment", fragment);
+        startIntent.putExtra("custom_peer", customPeer);
+        startIntent.putExtra("wiw_outer", wiwOuter);
+        startIntent.putExtra("wiw_inner", wiwInner);
+
         startService(startIntent);
         isConnected = true;
         connectionStartTime = System.currentTimeMillis();
@@ -300,12 +348,6 @@ public class MainActivity extends AppCompatActivity {
             updateProtocolChips();
             updateNoizeChips();
         });
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        updateUI();
     }
 
     @Override

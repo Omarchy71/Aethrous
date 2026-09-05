@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_dark"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="24dp">
+
+            <Button
+                android:id="@+id/btnBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/circle_button_background"
+                android:text="←"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"/>
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Settings"
+                android:textSize="24sp"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold"
+                android:layout_marginStart="16dp"/>
+
+        </LinearLayout>
+
+        <!-- Scan Mode Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_background"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Scan Mode"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="4dp"/>
+
+            <TextView
+                android:id="@+id/txtScanMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="balanced"
+                android:textSize="16sp"
+                android:textColor="@color/accent"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp"/>
+
+            <SeekBar
+                android:id="@+id/seekScanMode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="4"
+                android:progress="1"
+                android:progressTint="@color/primary"
+                android:thumbTint="@color/primary"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="turbo ← balanced → ironclad"
+                android:textSize="11sp"
+                android:textColor="@color/text_hint"/>
+
+        </LinearLayout>
+
+        <!-- IP Version Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_background"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="IP Version"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="4dp"/>
+
+            <TextView
+                android:id="@+id/txtIpVersion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4"
+                android:textSize="16sp"
+                android:textColor="@color/accent"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp"/>
+
+            <SeekBar
+                android:id="@+id/seekIpVersion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="2"
+                android:progress="0"
+                android:progressTint="@color/primary"
+                android:thumbTint="@color/primary"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="IPv4 ← IPv6 → Dual"
+                android:textSize="11sp"
+                android:textColor="@color/text_hint"/>
+
+        </LinearLayout>
+
+        <!-- Advanced Options Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_background"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Advanced Options"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="12dp"/>
+
+            <Switch
+                android:id="@+id/switchQuickReconnect"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Quick Reconnect"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:checked="true"
+                android:layout_marginBottom="8dp"
+                android:thumbTint="@color/primary"
+                android:trackTint="@color/background_card_elevated"/>
+
+            <Switch
+                android:id="@+id/switchH2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="MASQUE HTTP/2 (h2)"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:layout_marginBottom="8dp"
+                android:thumbTint="@color/primary"
+                android:trackTint="@color/background_card_elevated"/>
+
+            <Switch
+                android:id="@+id/switchFragment"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="TLS ClientHello Fragmentation"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:layout_marginBottom="12dp"
+                android:thumbTint="@color/primary"
+                android:trackTint="@color/background_card_elevated"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Keepalive (seconds)"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/editKeepalive"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/card_background"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:hint="5"
+                android:inputType="number"
+                android:textSize="14sp"
+                android:layout_marginBottom="12dp"/>
+
+        </LinearLayout>
+
+        <!-- Custom Peers Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_background"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Custom Peers (optional)"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginBottom="12dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WireGuard Peer (ip:port)"
+                android:textSize="12sp"
+                android:textColor="@color/text_hint"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/editCustomPeer"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/card_background"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:hint="162.159.192.1:2408"
+                android:inputType="text"
+                android:textSize="14sp"
+                android:layout_marginBottom="12dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Gool Outer Hop (ip:port)"
+                android:textSize="12sp"
+                android:textColor="@color/text_hint"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/editWiwOuter"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/card_background"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:hint="162.159.192.1:2408"
+                android:inputType="text"
+                android:textSize="14sp"
+                android:layout_marginBottom="12dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Gool Inner Hop (ip:port)"
+                android:textSize="12sp"
+                android:textColor="@color/text_hint"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/editWiwInner"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/card_background"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:hint="188.114.96.1:2408"
+                android:inputType="text"
+                android:textSize="14sp"/>
+
+        </LinearLayout>
+
+        <!-- Save Button -->
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:background="@drawable/circle_button_background"
+            android:text="Save"
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"/>
+
+    </LinearLayout>
+
+</ScrollView>

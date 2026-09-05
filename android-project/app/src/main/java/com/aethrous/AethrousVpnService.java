@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
 
 public class AethrousVpnService extends VpnService {
     private static final String TAG = "AethrousVpn";
@@ -39,6 +40,15 @@ public class AethrousVpnService extends VpnService {
 
     private String protocol = "gool";
     private String noize = "balanced";
+    private String scanMode = "balanced";
+    private String ipVersion = "4";
+    private boolean quickReconnect = true;
+    private int keepalive = 5;
+    private boolean useH2 = false;
+    private boolean fragment = false;
+    private String customPeer = "";
+    private String wiwOuter = "";
+    private String wiwInner = "";
 
     static {
         try {
@@ -74,6 +84,20 @@ public class AethrousVpnService extends VpnService {
             if (protocol == null) protocol = "gool";
             noize = intent.getStringExtra("noize");
             if (noize == null) noize = "balanced";
+            scanMode = intent.getStringExtra("scan_mode");
+            if (scanMode == null) scanMode = "balanced";
+            ipVersion = intent.getStringExtra("ip_version");
+            if (ipVersion == null) ipVersion = "4";
+            quickReconnect = intent.getBooleanExtra("quick_reconnect", true);
+            keepalive = intent.getIntExtra("keepalive", 5);
+            useH2 = intent.getBooleanExtra("use_h2", false);
+            fragment = intent.getBooleanExtra("fragment", false);
+            customPeer = intent.getStringExtra("custom_peer");
+            if (customPeer == null) customPeer = "";
+            wiwOuter = intent.getStringExtra("wiw_outer");
+            if (wiwOuter == null) wiwOuter = "";
+            wiwInner = intent.getStringExtra("wiw_inner");
+            if (wiwInner == null) wiwInner = "";
         }
 
         startForeground(NOTIFICATION_ID, buildNotification("Starting..."));
@@ -113,7 +137,7 @@ public class AethrousVpnService extends VpnService {
 
                 isRunning = true;
                 updateNotification("Connected (" + protocol.toUpperCase() + ")");
-                Log.i(TAG, "VPN started: protocol=" + protocol + " noize=" + noize);
+                Log.i(TAG, "VPN started: protocol=" + protocol + " noize=" + noize + " scan=" + scanMode);
                 startMonitor();
 
             } catch (Exception e) {
@@ -130,10 +154,13 @@ public class AethrousVpnService extends VpnService {
                 try {
                     Thread.sleep(5000);
                     if (!TProxyIsRunning()) {
-                        Log.w(TAG, "Tunnel died, stopping VPN");
-                        isRunning = false;
-                        updateNotification("Disconnected (tunnel died)");
-                        stopVpn();
+                        Log.w(TAG, "Tunnel died, attempting reconnect...");
+                        updateNotification("Reconnecting...");
+                        stopVpnInternal();
+                        Thread.sleep(2000);
+                        if (quickReconnect) {
+                            startVpn();
+                        }
                         break;
                     }
                 } catch (InterruptedException e) {
@@ -158,15 +185,53 @@ public class AethrousVpnService extends VpnService {
 
             aetherFile.setExecutable(true);
 
-            java.util.ArrayList<String> cmd = new java.util.ArrayList<>();
+            ArrayList<String> cmd = new ArrayList<>();
             cmd.add(aetherPath);
+
             cmd.add("--" + protocol);
+
             cmd.add("--scan");
-            cmd.add("balanced");
+            cmd.add(scanMode);
+
+            cmd.add("-" + ipVersion);
+
+            cmd.add("--keepalive");
+            cmd.add(String.valueOf(keepalive));
+
+            if (quickReconnect) {
+                cmd.add("--quick-reconnect");
+            } else {
+                cmd.add("--no-quick-reconnect");
+            }
+
+            if (useH2 && "masque".equals(protocol)) {
+                cmd.add("--h2");
+                if (fragment) {
+                    cmd.add("--fragment");
+                }
+            }
+
             if (!"off".equals(noize)) {
                 cmd.add("--noize");
                 cmd.add(noize);
             }
+
+            if (!customPeer.isEmpty()) {
+                cmd.add("--peer");
+                cmd.add(customPeer);
+            }
+
+            if (!wiwOuter.isEmpty()) {
+                cmd.add("--wiw-outer");
+                cmd.add(wiwOuter);
+            }
+
+            if (!wiwInner.isEmpty()) {
+                cmd.add("--wiw-inner");
+                cmd.add(wiwInner);
+            }
+
+            Log.i(TAG, "Aether command: " + cmd.toString());
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
@@ -216,11 +281,14 @@ public class AethrousVpnService extends VpnService {
         Builder builder = new Builder();
         builder.setSession("Aethrous");
         builder.addAddress(TUN_ADDRESS, 32);
-        builder.addAddress(TUN_IPV6, 128);
         builder.addRoute("0.0.0.0", 0);
         builder.addDnsServer("8.8.8.8");
         builder.addDnsServer("8.8.4.4");
         builder.setMtu(MTU);
+
+        if ("6".equals(ipVersion) || "dual".equals(ipVersion)) {
+            builder.addAddress(TUN_IPV6, 128);
+        }
 
         try {
             builder.addDisallowedApplication(getPackageName());
@@ -232,13 +300,16 @@ public class AethrousVpnService extends VpnService {
     }
 
     private String createTunnelConfig() {
+        String ipv6Line = ("6".equals(ipVersion) || "dual".equals(ipVersion))
+            ? "  ipv6: '" + TUN_IPV6 + "'\n" : "";
+
         String config =
             "tunnel:\n" +
             "  name: tun0\n" +
             "  mtu: " + MTU + "\n" +
             "  multi-queue: false\n" +
             "  ipv4: " + TUN_ADDRESS + "\n" +
-            "  ipv6: '" + TUN_IPV6 + "'\n" +
+            ipv6Line +
             "  icmp: 'off'\n" +
             "\n" +
             "socks5:\n" +
@@ -262,7 +333,7 @@ public class AethrousVpnService extends VpnService {
         }
     }
 
-    private void stopVpn() {
+    private void stopVpnInternal() {
         isRunning = false;
 
         try {
@@ -284,7 +355,10 @@ public class AethrousVpnService extends VpnService {
             }
             vpnInterface = null;
         }
+    }
 
+    private void stopVpn() {
+        stopVpnInternal();
         stopForeground(true);
         stopSelf();
         Log.i(TAG, "VPN stopped");
