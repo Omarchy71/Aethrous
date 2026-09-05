@@ -23,40 +23,28 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Accept Android SDK licenses
-      run: yes | sdkmanager --licenses || true
-
-    - name: Install Android SDK components
-      run: |
-        sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
-
-    - name: Build Debug APK
+    - name: Build APK
       working-directory: android-project
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace --info
-
-    - name: Build Release APK
-      if: success()
-      working-directory: android-project
-      run: ./gradlew assembleRelease --stacktrace
+        ./gradlew assembleDebug assembleRelease
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
-      if: success()
+      if: always()
       with:
         name: aethrous-debug-apk
         path: android-project/app/build/outputs/apk/debug/app-debug.apk
 
     - name: Upload Release APK
       uses: actions/upload-artifact@v4
-      if: success()
+      if: always()
       with:
         name: aethrous-release-apk
         path: android-project/app/build/outputs/apk/release/app-release-unsigned.apk
 
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/') && success()
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
         files: |
