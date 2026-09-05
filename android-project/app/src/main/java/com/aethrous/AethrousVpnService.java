@@ -17,6 +17,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 
 public class AethrousVpnService extends VpnService {
     private static final String TAG = "AethrousVpn";
@@ -27,6 +29,7 @@ public class AethrousVpnService extends VpnService {
     private static final int SOCKS5_PORT = 1819;
     private static final String TUN_ADDRESS = "198.18.0.1";
     private static final String TUN_IPV6 = "fc00::1";
+    private static final int MTU = 1280;
 
     private ParcelFileDescriptor vpnInterface;
     private volatile boolean isRunning = false;
@@ -155,12 +158,11 @@ public class AethrousVpnService extends VpnService {
 
             aetherFile.setExecutable(true);
 
-            String scanMode = "balanced";
             java.util.ArrayList<String> cmd = new java.util.ArrayList<>();
             cmd.add(aetherPath);
             cmd.add("--" + protocol);
             cmd.add("--scan");
-            cmd.add(scanMode);
+            cmd.add("balanced");
             if (!"off".equals(noize)) {
                 cmd.add("--noize");
                 cmd.add(noize);
@@ -195,10 +197,8 @@ public class AethrousVpnService extends VpnService {
 
     private boolean waitForSocks5(int maxSeconds) {
         for (int i = 0; i < maxSeconds; i++) {
-            try {
-                java.net.Socket socket = new java.net.Socket();
-                socket.connect(new java.net.InetSocketAddress(SOCKS5_ADDRESS, SOCKS5_PORT), 1000);
-                socket.close();
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(SOCKS5_ADDRESS, SOCKS5_PORT), 1000);
                 return true;
             } catch (Exception e) {
                 try {
@@ -220,7 +220,7 @@ public class AethrousVpnService extends VpnService {
         builder.addRoute("0.0.0.0", 0);
         builder.addDnsServer("8.8.8.8");
         builder.addDnsServer("8.8.4.4");
-        builder.setMtu(8500);
+        builder.setMtu(MTU);
 
         try {
             builder.addDisallowedApplication(getPackageName());
@@ -235,7 +235,7 @@ public class AethrousVpnService extends VpnService {
         String config =
             "tunnel:\n" +
             "  name: tun0\n" +
-            "  mtu: 8500\n" +
+            "  mtu: " + MTU + "\n" +
             "  multi-queue: false\n" +
             "  ipv4: " + TUN_ADDRESS + "\n" +
             "  ipv6: '" + TUN_IPV6 + "'\n" +
@@ -252,9 +252,9 @@ public class AethrousVpnService extends VpnService {
 
         try {
             File configFile = new File(getFilesDir(), "tunnel.yml");
-            FileWriter writer = new FileWriter(configFile);
-            writer.write(config);
-            writer.close();
+            try (FileWriter writer = new FileWriter(configFile)) {
+                writer.write(config);
+            }
             return configFile.getAbsolutePath();
         } catch (IOException e) {
             Log.e(TAG, "Failed to write config", e);

@@ -46,8 +46,6 @@ public class MainActivity extends AppCompatActivity {
     private long connectionStartTime = 0;
     private Handler timerHandler;
     private Runnable timerRunnable;
-    private long totalBytesIn = 0;
-    private long totalBytesOut = 0;
 
     private final ActivityResultLauncher<Intent> vpnPermissionLauncher =
         registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
@@ -248,7 +246,9 @@ public class MainActivity extends AppCompatActivity {
         startService(stopIntent);
         isConnected = false;
         connectionStartTime = 0;
-        timerHandler.removeCallbacks(timerRunnable);
+        if (timerHandler != null) {
+            timerHandler.removeCallbacks(timerRunnable);
+        }
         updateUI();
     }
 
@@ -291,8 +291,8 @@ public class MainActivity extends AppCompatActivity {
                     connectionInfo.setVisibility(View.GONE);
                 }
                 if (txtDuration != null) txtDuration.setText("00:00:00");
-                if (txtUpload != null) txtUpload.setText("0 KB/s");
-                if (txtDownload != null) txtDownload.setText("0 KB/s");
+                if (txtUpload != null) txtUpload.setText("---");
+                if (txtDownload != null) txtDownload.setText("---");
                 if (btnSettings != null) btnSettings.setEnabled(true);
                 if (btnScan != null) btnScan.setEnabled(true);
             }
